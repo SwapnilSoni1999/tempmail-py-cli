@@ -4,13 +4,14 @@ import json
 import schedule
 from mailtm_utils import print_formatted_mail
 import time
+from getpass import getpass
 
 MAILTM_HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
 
 MAILTM_AUTH_HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
-    "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpYXQiOjE3MDE0OTg1MTIsInJvbGVzIjpbIlJPTEVfVVNFUiJdLCJhZGRyZXNzIjoic29uaXNpbnMxODExMTk5OUB3aXJlY29ubmVjdGVkLmNvbSIsImlkIjoiNjU2YWNkOGU3Y2U0M2EzZTEwMDVjYmJjIiwibWVyY3VyZSI6eyJzdWJzY3JpYmUiOlsiL2FjY291bnRzLzY1NmFjZDhlN2NlNDNhM2UxMDA1Y2JiYyJdfX0.XH2rYUvEB4zDHRayhaRyJKXM24oYAmUMAEiXUbWSip7Ebiy0cJb0oHyZ8j50gVxEM6IBy0a5nbWhnMZkZ7zKzg",
+    "Authorization": "",
 }
 
 HOST = "https://api.mail.tm"
@@ -83,7 +84,7 @@ def get_account_token(address: str, password: str):
         return requests.post(f"{HOST}/token", data=account, headers=MAILTM_HEADERS)
 
     r = _make_mailtm_request(_get_token)
-    print(r)
+    return r
 
 
 def get_mails(page=1):
@@ -113,13 +114,15 @@ def get_mail_by_id(mail_id: str):
 def get_new_mails(page=1):
     mails = get_mails(page)
     new_mails = []
+
     for mail in mails:
         if mail["id"] not in displayed_mail_ids:
             new_mails.append(mail)
 
-    if len(new_mails) == len(mails):
-        n_mails = get_new_mails(page + 1)
-        new_mails.extend(n_mails)
+    if len(mails) > 0:
+        if len(new_mails) == len(mails):
+            n_mails = get_new_mails(page + 1)
+            new_mails.extend(n_mails)
 
     return new_mails
 
@@ -138,19 +141,55 @@ def monitor():
 
 
 if __name__ == "__main__":
-    # print(get_mailtm_domains())
-    # user_email = "sonisins18111999@wireconnected.com"
-    # user_password = "admin123"
+    domains = get_mailtm_domains()
+    print("Available Domains:", domains)
 
-    # create_mailtm_account(user_email, user_password)
-    # get_account_token(user_email, user_password)
+    domain_choice = (
+        int(
+            input(
+                f"Please enter the number whichever domain you want to choose (eg. 1 for {domains[0]}): "
+            )
+        )
+        - 1
+    )
+
+    if domain_choice > len(domains):
+        print("Error: Please choose a valid number and try again.")
+        raise Exception("Invalid domain selection")
+
+    username = input(
+        f"Enter username for {domains[domain_choice]} (eg. input 'user' will be user@{domains[domain_choice]}) [NOTE: Username should be minimum of 10 characters]: "
+    )
+
+    if len(username) <= 10:
+        print(
+            "Error: Username must be greater than or eq to 10 characters, Please retry and enter valid username."
+        )
+        raise Exception("Invalid username")
+
+    user_email = f"{username}@{domains[domain_choice]}"
+    user_password = getpass(f"Enter password for {user_email}: ")
+
+    create_mailtm_account(user_email, user_password)
+    print("Account created!")
+
+    token_data = get_account_token(user_email, user_password)
+    print("Account Token:", token_data["token"])
+    print("Account ID:", token_data["id"])
+    print()
+
+    token = token_data["token"]
+    MAILTM_AUTH_HEADERS["Authorization"] = f"Bearer {token}"
 
     # print(get_mailtm_domains_auth())
     mails = get_mails()
     # print(mails)
-    displayed_mail_ids = [d["id"] for d in mails]
+    if len(mails):
+        displayed_mail_ids = [d["id"] for d in mails]
 
-    print("Monitoring inbox... All the newly incoming mails will be printed here.")
+    print(
+        f"Monitoring inbox for {user_email}... All the newly incoming mails will be printed here."
+    )
     schedule.every(1).second.do(monitor)
 
     while True:
